@@ -1,0 +1,19 @@
+topics:
+  steering_command: /autodrive/f1tenth_1/steering_command
+  throttle_command: /autodrive/f1tenth_1/throttle_command
+  lidar: /autodrive/f1tenth_1/lidar
+  debug_lidar: /ebva/debug/lidar
+
+parameters:
+  disparity_threshold: 0.05
+  tol_mask_disparities: 0.01
+  car_diameter: 0.85
+  time_to_collision: 42
+  min_speed_factor: 5
+  steering_saturation: 60
+  safe_curve_exit_ratio: 0.333
+  safe_lateral_distance: 0.1
+  td: 0.2
+  kp_steer: 1
+  n: 10
+  ts: 0.025
