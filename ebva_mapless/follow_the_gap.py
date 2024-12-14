@@ -19,6 +19,7 @@ class FollowTheGap(Node):
 
         # Subscriptions
         self.create_subscription(LaserScan, config['topics']['lidar'], self.lidar_callback, 10)
+        self.create_subscription(Float32, config['topics']['steering_angle'], self.steering_callback, 10)
 
         # Internal State
         self.lidar_msg = LaserScan()
@@ -87,6 +88,13 @@ class FollowTheGap(Node):
         """Get the angle from the LiDAR beam index."""
         return lidar.angle_min + index * lidar.angle_increment
 
+    def get_range_from_angle(self, angle, ranges):
+        """Get the range from the angle."""
+        index = self.get_lidar_beam_index_by_angle(angle)
+        if index != -1:
+            return ranges[index]
+        return None
+
     def set_safe_max_speed(self, distance, angle):
         """Set the safe maximum speed based on distance and angle."""
         speed_dist = distance / self.params['time_to_collision']
@@ -121,19 +129,51 @@ class FollowTheGap(Node):
         self.steer_command(steer)
         self.throttle_publisher.publish(Float32(data=throttle))
 
+    def min_lateral_distance(self, lidar: LaserScan):
+        """Calculate the minimum lateral distance from obstacles."""
+        right_distances = []
+        left_distances = []
+        robustness_range = self.params['robustness_range']
+
+        # For the left side (negative angles)
+        for angle_degree in range(-robustness_range[0], -robustness_range[1], -1):  # Step -1 to move leftward
+            range_at_angle = self.get_range_from_angle(angle_degree, lidar.ranges)
+            if range_at_angle is not None:
+                left_distances.append(range_at_angle * abs(np.sin(np.radians(angle_degree))))
+
+        # For the right side (positive angles)
+        for angle_degree in range(robustness_range[0], robustness_range[1]):
+            range_at_angle = self.get_range_from_angle(angle_degree, lidar.ranges)
+            if range_at_angle is not None:
+                right_distances.append(range_at_angle * abs(np.sin(np.radians(angle_degree))))
+
+        # Check if there are valid distances for both sides
+        if left_distances and right_distances:
+            mean_right_distance = np.mean(right_distances)
+            mean_left_distance = np.mean(left_distances)
+            return min(mean_right_distance, mean_left_distance)
+        else:
+            return 0.0
+
+    def safe_steering(self, lidar):
+        """Determine if steering is safe based on lateral distances."""
+        min_lateral_distance = self.min_lateral_distance(lidar)
+        return min_lateral_distance > self.params['safe_lateral_distance']
+        
     def follow_the_gap(self):
         """Implement the Follow the Gap algorithm."""
         lidar = self.lidar_msg
         disparities = self.find_disparities(lidar)
+        masked_lidar=lidar
         for disparity in disparities:
-            lidar = self.mask_disparities(disparity, lidar)
+            masked_lidar = self.mask_disparities(disparity, masked_lidar)
 
-        self.debug_lidar_publisher.publish(lidar)
+        self.debug_lidar_publisher.publish(masked_lidar)
 
-        angle, distance = self.get_angle_and_distance_farthest(lidar.ranges, lidar)
+        angle, distance = self.get_angle_and_distance_farthest(masked_lidar.ranges, lidar)
 
-        if distance < self.params['safe_lateral_distance']:
-            angle = 0
+        if not self.safe_steering(lidar):
+            angle = 0.0
 
         max_speed = self.set_safe_max_speed(distance, angle)
         self.publish_control(angle, max_speed)
