@@ -11,11 +11,13 @@ parameters:
   car_diameter: 0.85
   time_to_collision: 42
   min_speed_factor: 5
-  steering_saturation: 60
   safe_curve_exit_ratio: 0.333
   safe_lateral_distance: 0.1
-  td: 0.2
-  kp_steer: 1
-  n: 10
-  ts: 0.025
   robustness_range: [85, 95]  # Considering angles near lateral beams (-90 and 90 degrees)
+
+steering_controller:
+  steering_saturation: 60 # degrees
+  td: 0.2 # seconds
+  kp_steer: 1
+  n: 10 # number of points to consider
+  ts: 0.025 # seconds

@@ -30,6 +30,7 @@ class FollowTheGap(Node):
 
         # Parameters from config
         self.params = config['parameters']
+        self.steering_controller_params = config['steering_controller']
 
     def get_lidar_beam_index_by_angle(self, angle_degree):
         """Get the index of the LiDAR beam by angle."""
@@ -98,13 +99,13 @@ class FollowTheGap(Node):
     def set_safe_max_speed(self, distance, angle):
         """Set the safe maximum speed based on distance and angle."""
         speed_dist = distance / self.params['time_to_collision']
-        steer_factor = 1 - abs(np.degrees(angle)) / (self.params['min_speed_factor'] * self.params['steering_saturation'])
+        steer_factor = 1 - abs(np.degrees(angle)) / (self.params['min_speed_factor'] * self.steering_controller_params['steering_saturation'])
         curve_exit_factor = self.safe_curve_exit_factor(angle)
         return curve_exit_factor * steer_factor * speed_dist
 
     def safe_curve_exit_factor(self, angle):
         """Calculate the safe curve exit factor."""
-        if abs(self.angle_old - angle) < np.radians(self.params['steering_saturation'] * self.params['safe_curve_exit_ratio']):
+        if abs(self.angle_old - angle) < np.radians(self.steering_controller_params['steering_saturation'] * self.params['safe_curve_exit_ratio']):
             self.angle_old = angle
             return 0.5
         self.angle_old = angle
@@ -113,9 +114,9 @@ class FollowTheGap(Node):
     def steer_command(self, steer_angle):
         """Control the steering angle using PD control."""
         error = steer_angle - self.steering_msg.data
-        up = self.params['kp_steer'] * error
-        ud = (self.params['td'] / (self.params['td'] + self.params['n'] * self.params['ts'])) * self.ud_1 - (
-            self.params['kp_steer'] * self.params['td'] / (self.params['td'] + self.params['n'] * self.params['ts'])
+        up = self.steering_controller_params['kp_steer'] * error
+        ud = (self.steering_controller_params['td'] / (self.steering_controller_params['td'] + self.steering_controller_params['n'] * self.steering_controller_params['ts'])) * self.ud_1 - (
+            self.steering_controller_params['kp_steer'] * self.steering_controller_params['td'] / (self.steering_controller_params['td'] + self.steering_controller_params['n'] * self.steering_controller_params['ts'])
         ) * (self.steering_msg.data - self.steering_measurement_1)
         control_signal = up + ud
 
@@ -125,7 +126,7 @@ class FollowTheGap(Node):
 
     def publish_control(self, steer, throttle):
         """Publish the control commands for steering and throttle."""
-        steer = np.clip(steer, -np.radians(self.params['steering_saturation']), np.radians(self.params['steering_saturation']))
+        steer = np.clip(steer, -np.radians(self.steering_controller_params['steering_saturation']), np.radians(self.steering_controller_params['steering_saturation']))
         self.steer_command(steer)
         self.throttle_publisher.publish(Float32(data=throttle))
 
