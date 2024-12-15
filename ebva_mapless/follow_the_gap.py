@@ -8,6 +8,34 @@ import yaml
 from std_msgs.msg import Float32
 from sensor_msgs.msg import LaserScan
 
+class SteeringController:
+    def __init__(self, params):
+        self.params = params
+        self.ud_1 = 0
+        self.steering_measurement_1 = 0
+        self.angle_old = 0
+        
+
+    def compute_control_signal(self, desired_angle, current_angle):
+        error = desired_angle - current_angle
+        up = self.params['kp_steer'] * error
+        ud = (
+            (self.params['td'] / (self.params['td'] + self.params['n'] * self.params['ts'])) * self.ud_1
+            - (self.params['kp_steer'] * self.params['td'] / (self.params['td'] + self.params['n'] * self.params['ts']))
+            * (current_angle - self.steering_measurement_1)
+        )
+        control_signal = up + ud
+        self.ud_1 = ud
+        self.steering_measurement_1 = current_angle
+        return control_signal
+
+    def safe_curve_exit_factor(self, angle):
+        if abs(self.angle_old - angle) < np.radians(self.params['steering_saturation'] * self.params['safe_curve_exit_ratio']):
+            self.angle_old = angle
+            return 0.5
+        self.angle_old = angle
+        return 1.0
+
 class FollowTheGap(Node):
     def __init__(self, config):
         super().__init__('follow_the_gap')
@@ -24,13 +52,10 @@ class FollowTheGap(Node):
         # Internal State
         self.lidar_msg = LaserScan()
         self.steering_msg = Float32()
-        self.angle_old = 0
-        self.ud_1 = 0
-        self.steering_measurement_1 = 0
 
         # Parameters from config
         self.params = config['parameters']
-        self.steering_controller_params = config['steering_controller']
+        self.controller = SteeringController(config['steering_controller'])
 
     def get_lidar_beam_index_by_angle(self, angle_degree):
         """Get the index of the LiDAR beam by angle."""
@@ -99,35 +124,15 @@ class FollowTheGap(Node):
     def set_safe_max_speed(self, distance, angle):
         """Set the safe maximum speed based on distance and angle."""
         speed_dist = distance / self.params['time_to_collision']
-        steer_factor = 1 - abs(np.degrees(angle)) / (self.params['min_speed_factor'] * self.steering_controller_params['steering_saturation'])
-        curve_exit_factor = self.safe_curve_exit_factor(angle)
+        steer_factor = 1 - abs(np.degrees(angle)) / (self.params['min_speed_factor'] * self.controller.params['steering_saturation'])
+        curve_exit_factor = self.controller.safe_curve_exit_factor(angle)
         return curve_exit_factor * steer_factor * speed_dist
-
-    def safe_curve_exit_factor(self, angle):
-        """Calculate the safe curve exit factor."""
-        if abs(self.angle_old - angle) < np.radians(self.steering_controller_params['steering_saturation'] * self.params['safe_curve_exit_ratio']):
-            self.angle_old = angle
-            return 0.5
-        self.angle_old = angle
-        return 1.0
-
-    def steer_command(self, steer_angle):
-        """Control the steering angle using PD control."""
-        error = steer_angle - self.steering_msg.data
-        up = self.steering_controller_params['kp_steer'] * error
-        ud = (self.steering_controller_params['td'] / (self.steering_controller_params['td'] + self.steering_controller_params['n'] * self.steering_controller_params['ts'])) * self.ud_1 - (
-            self.steering_controller_params['kp_steer'] * self.steering_controller_params['td'] / (self.steering_controller_params['td'] + self.steering_controller_params['n'] * self.steering_controller_params['ts'])
-        ) * (self.steering_msg.data - self.steering_measurement_1)
-        control_signal = up + ud
-
-        self.steer_publisher.publish(Float32(data=control_signal))
-        self.ud_1 = ud
-        self.steering_measurement_1 = self.steering_msg.data
 
     def publish_control(self, steer, throttle):
         """Publish the control commands for steering and throttle."""
-        steer = np.clip(steer, -np.radians(self.steering_controller_params['steering_saturation']), np.radians(self.steering_controller_params['steering_saturation']))
-        self.steer_command(steer)
+        steer = np.clip(steer, -np.radians(self.controller.params['steering_saturation']), np.radians(self.controller.params['steering_saturation']))
+        control_signal = self.controller.compute_control_signal(steer, self.steering_msg.data)
+        self.steer_publisher.publish(Float32(data=control_signal))
         self.throttle_publisher.publish(Float32(data=throttle))
 
     def min_lateral_distance(self, lidar: LaserScan):
@@ -165,7 +170,7 @@ class FollowTheGap(Node):
         """Implement the Follow the Gap algorithm."""
         lidar = self.lidar_msg
         disparities = self.find_disparities(lidar)
-        masked_lidar=lidar
+        masked_lidar = lidar
         for disparity in disparities:
             masked_lidar = self.mask_disparities(disparity, masked_lidar)
 
@@ -188,7 +193,7 @@ class FollowTheGap(Node):
 
 
 def load_config(config_relative_path):
-    package_name = 'ebva_mapless'  # Replace with your actual package name
+    package_name = 'ebva_mapless'
     package_share_directory = get_package_share_directory(package_name)
     config_path = os.path.join(package_share_directory, config_relative_path)
     with open(config_path, 'r') as file:
