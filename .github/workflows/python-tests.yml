@@ -1,4 +1,4 @@
-name: Python Tests
+name: ROS Tests
 
 on:
   push:
@@ -10,24 +10,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        python-version: [3.8, 3.9, 3.10]
-
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
-  
+    - name: Set up ROS
+      run: |
+        sudo apt update
+        sudo apt install -y curl gnupg2 lsb-release
+        curl -sSL http://repo.ros2.org/repos.key | sudo apt-key add -
+        sudo sh -c 'echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list'
+        sudo apt update
+        sudo apt install -y ros-foxy-ros-base python3-colcon-common-extensions
+        sudo apt install -y python3-ament-copyright python3-ament-flake8 python3-ament-pep257
+        source /opt/ros/foxy/setup.bash
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pytest==8.0.0
-  
     - name: Add pytest to PATH
       run: echo "/opt/hostedtoolcache/Python/3.9.20/x64/lib/ebva_mapless" >> $GITHUB_PATH
-
     - name: Run tests
       run: pytest test
