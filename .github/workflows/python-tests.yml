@@ -13,6 +13,10 @@ jobs:
       matrix:
           linter: [flake8, pep257, pep8, xmllint]
     steps:
+    - name: Set up Docker
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libc6=2.28-10
     - run: sudo chown -R rosbuild:rosbuild .
     - uses: actions/checkout@v2
     - uses: ros-tooling/action-ros-lint@master
