@@ -8,20 +8,25 @@ import yaml
 from std_msgs.msg import Float32
 from sensor_msgs.msg import LaserScan
 
+
 class SteeringController:
     def __init__(self, params):
         self.params = params
         self.ud_1 = 0
         self.steering_measurement_1 = 0
         self.angle_old = 0
-        
 
     def compute_control_signal(self, desired_angle, current_angle):
         error = desired_angle - current_angle
         up = self.params['kp_steer'] * error
+        td = self.params['td']
+        n = self.params['n']
+        ts = self.params['ts']
+        kp_steer = self.params['kp_steer']
+
         ud = (
-            (self.params['td'] / (self.params['td'] + self.params['n'] * self.params['ts'])) * self.ud_1
-            - (self.params['kp_steer'] * self.params['td'] / (self.params['td'] + self.params['n'] * self.params['ts']))
+            (td / (td + n * ts)) * self.ud_1
+            - (kp_steer * td / (td + n * ts))
             * (current_angle - self.steering_measurement_1)
         )
         control_signal = up + ud
@@ -30,24 +35,32 @@ class SteeringController:
         return control_signal
 
     def safe_curve_exit_factor(self, angle):
-        if abs(self.angle_old - angle) < np.radians(self.params['steering_saturation'] * self.params['safe_curve_exit_ratio']):
+        if abs(self.angle_old - angle) < np.radians(
+            self.params['steering_saturation'] * self.params['safe_curve_exit_ratio']
+        ):
             self.angle_old = angle
             return 0.5
         self.angle_old = angle
         return 1.0
 
+
 class FollowTheGap(Node):
     def __init__(self, config):
         super().__init__('follow_the_gap')
-        
+
         # Publishers
-        self.steer_publisher = self.create_publisher(Float32, config['topics']['steering_command'], 10)
-        self.throttle_publisher = self.create_publisher(Float32, config['topics']['throttle_command'], 10)
-        self.debug_lidar_publisher = self.create_publisher(LaserScan, config['topics']['debug_lidar'], 10)
+        self.steer_publisher = self.create_publisher(
+            Float32, config['topics']['steering_command'], 10)
+        self.throttle_publisher = self.create_publisher(
+            Float32, config['topics']['throttle_command'], 10)
+        self.debug_lidar_publisher = self.create_publisher(
+            LaserScan, config['topics']['debug_lidar'], 10)
 
         # Subscriptions
-        self.create_subscription(LaserScan, config['topics']['lidar'], self.lidar_callback, 10)
-        self.create_subscription(Float32, config['topics']['steering_angle'], self.steering_callback, 10)
+        self.create_subscription(
+            LaserScan, config['topics']['lidar'], self.lidar_callback, 10)
+        self.create_subscription(
+            Float32, config['topics']['steering_angle'], self.steering_callback, 10)
 
         # Internal State
         self.lidar_msg = LaserScan()
@@ -86,13 +99,17 @@ class FollowTheGap(Node):
 
     def mask_disparities(self, disp_index, lidar):
         """Mask disparities in the LiDAR data."""
-        closer = disp_index if lidar.ranges[disp_index] < lidar.ranges[disp_index + 1] else disp_index + 1
-        alpha = np.arctan((self.params['car_diameter'] / 2 + self.params['tol_mask_disparities']) / lidar.ranges[closer])
+        closer = disp_index if lidar.ranges[disp_index] < lidar.ranges[disp_index + 1] \
+            else disp_index + 1
+        alpha = np.arctan(
+            (self.params['car_diameter'] / 2 + self.params['tol_mask_disparities'])
+            / lidar.ranges[closer]
+        )
         mask_count = int(np.ceil(alpha / lidar.angle_increment))
-        
+
         start = max(0, closer - mask_count if closer == disp_index + 1 else closer)
         end = min(len(lidar.ranges), closer + mask_count if closer == disp_index else closer + 1)
-        
+
         for i in range(start, end):
             lidar.ranges[i] = lidar.ranges[closer]
 
@@ -124,14 +141,22 @@ class FollowTheGap(Node):
     def set_safe_max_speed(self, distance, angle):
         """Set the safe maximum speed based on distance and angle."""
         speed_dist = distance / self.params['time_to_collision']
-        steer_factor = 1 - abs(np.degrees(angle)) / (self.params['min_speed_factor'] * self.controller.params['steering_saturation'])
+        steer_factor = 1 - abs(np.degrees(angle)) / (
+            self.params['min_speed_factor'] * self.controller.params['steering_saturation']
+        )
         curve_exit_factor = self.controller.safe_curve_exit_factor(angle)
         return curve_exit_factor * steer_factor * speed_dist
 
     def publish_control(self, steer, throttle):
         """Publish the control commands for steering and throttle."""
-        steer = np.clip(steer, -np.radians(self.controller.params['steering_saturation']), np.radians(self.controller.params['steering_saturation']))
-        control_signal = self.controller.compute_control_signal(steer, self.steering_msg.data)
+        steer = np.clip(
+            steer,
+            -np.radians(self.controller.params['steering_saturation']),
+            np.radians(self.controller.params['steering_saturation'])
+        )
+        control_signal = self.controller.compute_control_signal(
+            steer, self.steering_msg.data
+        )
         self.steer_publisher.publish(Float32(data=control_signal))
         self.throttle_publisher.publish(Float32(data=throttle))
 
@@ -142,7 +167,7 @@ class FollowTheGap(Node):
         robustness_range = self.params['robustness_range']
 
         # For the left side (negative angles)
-        for angle_degree in range(-robustness_range[0], -robustness_range[1], -1):  # Step -1 to move leftward
+        for angle_degree in range(-robustness_range[0], -robustness_range[1], -1):
             range_at_angle = self.get_range_from_angle(angle_degree, lidar.ranges)
             if range_at_angle is not None:
                 left_distances.append(range_at_angle * abs(np.sin(np.radians(angle_degree))))
@@ -165,7 +190,7 @@ class FollowTheGap(Node):
         """Determine if steering is safe based on lateral distances."""
         min_lateral_distance = self.min_lateral_distance(lidar)
         return min_lateral_distance > self.params['safe_lateral_distance']
-        
+
     def follow_the_gap(self):
         """Implement the Follow the Gap algorithm."""
         lidar = self.lidar_msg

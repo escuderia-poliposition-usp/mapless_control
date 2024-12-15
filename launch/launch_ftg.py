@@ -3,6 +3,7 @@ from launch_ros.actions import Node
 import os
 from ament_index_python.packages import get_package_share_directory
 
+
 def generate_launch_description():
     config_path = os.path.join(
         get_package_share_directory('ebva_mapless'), 'config', 'config.yaml')
