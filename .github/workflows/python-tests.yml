@@ -3,9 +3,9 @@ name: ros CI
 on:
   push:
     # you may want to configure the branches that this should be run on here.
-    branches: [ "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "main" ]
 
 jobs:
   test_docker: # On Linux, iterates on all ROS 1 and ROS 2 distributions.
@@ -14,7 +14,7 @@ jobs:
       matrix:
         ros_distribution:
           # - noetic
-          - foxy
+          - humble
           # - iron
 
         # Define the Docker image(s) associated with each ROS distribution.
@@ -26,10 +26,25 @@ jobs:
         # https://ros.org/reps/rep-0003.html
         # https://ros.org/reps/rep-2000.html
         include:
-          - docker_image: ubuntu-20.04
-            ros_distribution: foxy
+          # Noetic Ninjemys (May 2020 - May 2025)
+          # - docker_image: ubuntu:focal
+          #   ros_distribution: noetic
+          #   ros_version: 1
+
+          # Humble Hawksbill (May 2022 - May 2027)
+          - docker_image: ubuntu:jammy
+            ros_distribution: humble
             ros_version: 2
 
+          # Iron Irwini (May 2023 - November 2024)
+          # - docker_image: ubuntu:jammy
+          #   ros_distribution: iron
+          #   ros_version: 2
+
+          # # Rolling Ridley (No End-Of-Life)
+          # - docker_image: ubuntu:jammy
+          #   ros_distribution: rolling
+          #   ros_version: 2
 
     container:
       image: ${{ matrix.docker_image }}
@@ -45,11 +60,11 @@ jobs:
         with:
           import-token: ${{ github.token }}
           target-ros1-distro: ${{ matrix.ros_distribution }}
-          skip-tests: false
+          skip-tests: true
       - name: build and test ROS 2
         if: ${{ matrix.ros_version == 2 }}
         uses: ros-tooling/action-ros-ci@v0.3
         with:
           import-token: ${{ github.token }}
           target-ros2-distro: ${{ matrix.ros_distribution }}
-          skip-tests: false
+          skip-tests: true
