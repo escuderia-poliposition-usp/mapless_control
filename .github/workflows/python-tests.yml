@@ -21,6 +21,11 @@ jobs:
         sudo apt update
         sudo apt install -y ros-foxy-ros-base python3-colcon-common-extensions
         source /opt/ros/foxy/setup.bash
+    - name: Install dependencies using rosdep
+      run: |
+        sudo rosdep init
+        rosdep update
+        rosdep install --from-paths src --ignore-src -r -y
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
