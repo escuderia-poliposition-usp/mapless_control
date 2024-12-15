@@ -1,7 +1,7 @@
 from setuptools import setup
 from glob import glob
 
-package_name = 'ebva_mapless'
+package_name = 'mapless_control'
 
 setup(
     name=package_name,
@@ -21,7 +21,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'follow_the_gap = ebva_mapless.follow_the_gap:main',
+            'follow_the_gap = mapless_control.follow_the_gap:main',
         ],
     },
 )

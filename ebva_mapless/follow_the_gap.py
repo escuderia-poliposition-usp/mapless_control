@@ -218,7 +218,7 @@ class FollowTheGap(Node):
 
 
 def load_config(config_relative_path):
-    package_name = 'ebva_mapless'
+    package_name = 'mapless_control'
     package_share_directory = get_package_share_directory(package_name)
     config_path = os.path.join(package_share_directory, config_relative_path)
     with open(config_path, 'r') as file:
